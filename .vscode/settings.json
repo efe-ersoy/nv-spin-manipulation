@@ -1,0 +1,26 @@
+{
+    // Use the project virtual environment for running, debugging and IntelliSense.
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+    "python.terminal.activateEnvironment": true,
+
+    // "Run Python File" (the play button) runs in a terminal started in the
+    // project root, with the root on PYTHONPATH so `import nvsim` works from
+    // any script (e.g. examples/*.py). PYTHONUTF8 lets the console print µ, π, φ.
+    "python.terminal.executeInFileDir": false,
+    "terminal.integrated.cwd": "${workspaceFolder}",
+    "terminal.integrated.env.windows": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "PYTHONUTF8": "1"
+    },
+    "python.envFile": "${workspaceFolder}/.env",
+
+    // Test explorer: the stdlib unittest suite in tests/.
+    "python.testing.unittestEnabled": true,
+    "python.testing.pytestEnabled": false,
+    "python.testing.unittestArgs": ["-v", "-s", "./tests", "-t", ".", "-p", "test_*.py"],
+
+    "python.analysis.extraPaths": ["${workspaceFolder}"],
+    "files.exclude": {
+        "**/__pycache__": true
+    }
+}
