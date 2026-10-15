@@ -13,7 +13,7 @@ Everything is written to output/<study name>/:
     summary.txt          parameters and derived numbers (pi time, T2*, where the DD dips are)
     noise_spectrum.png   noise PSD and the filter function of every sequence
     noise_traces.png     a few realisations of the noise field
-    signal_vs_tau.png    PL (or population) vs tau: Monte Carlo, Gaussian theory, no-noise
+    signal_vs_tau.png    PL (or population) vs tau: Monte Carlo, exact theory, no-noise
     spectroscopy.png     CPMG / XY coherence vs probed frequency, above the PSD
     <sequence>.csv       all numbers per sequence
 

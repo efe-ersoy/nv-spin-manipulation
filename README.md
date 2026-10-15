@@ -15,6 +15,9 @@ python -m venv .venv
 pip install -e .                  # editable install of nvsim
 ```
 
+Exact versions of a working environment are in [requirements-lock.txt](requirements-lock.txt)
+(`pip install -r requirements-lock.txt`); `pyproject.toml` keeps `>=` bounds.
+
 From another repository's venv (e.g. `nv-texture-imaging`):
 `pip install -e ../nv-spin-manipulation`. Inside this repo the scripts also run without
 installing, because VS Code puts the repo root on `PYTHONPATH` (see below).
@@ -96,12 +99,37 @@ check the `units` attributes. They only need `ds[name].values / .dims / .attrs`,
   `rtn_fid_coherence`, `rtn_echo_coherence`, `rtn_cpmg_coherence` (also XY4/XY8).
   Weak coupling (2πγ_e b τ_c ≪ 1) reproduces the Gaussian result; strong coupling
   gives ≈ exp(−rate · total time) for the echo.
+* **Mixed noise** (`nvsim/coherence.py`): independent sources factorise, so
+  `exact_coherence(segments, sources)` = Gaussian decay × Π telegraph coherences.
+  Studies use it, so Gaussian + telegraph noise gets an exact theory curve; only sources
+  without exact theory (`TraceNoise`, fixed-amplitude `NarrowbandNoise`) are Monte Carlo only.
 * **Readout** (`nvsim/readout.py`): `Readout(contrast=0.3)` maps populations to
   normalised PL (1 for |0⟩, 1 − contrast for |±1⟩); `photons_per_shot` + `shots`
-  add photon shot noise.
+  add photon shot noise. `se_norm(p0_n1, p0_n2)` = (N₂ − N₁)/(N₂ + N₁) of the two readouts
+  ending with ±π/2, `se_norm_from_coherence(C)` = ∓contrast·C/(2 − contrast) (−0.176 C for
+  contrast 0.3); which readout is N₂ is a parameter (`n2_bright`, default: N₂ ends dark).
 
 The Monte Carlo and theory agree within statistical error (tested in `tests/test_noise.py`,
-`tests/test_telegraph.py` and `tests/test_tabulated.py`).
+`tests/test_telegraph.py`, `tests/test_tabulated.py` and `tests/test_fitting.py`).
+
+## Fitting measured decays (`nvsim/fitting.py`)
+
+Signal model S(t) = offset + amplitude × C(t), t = total free evolution of a stated
+`DecaySequence(kind, n, t_pi)` (echo, CPMG-N, XY4-N, XY8-N). C is the product of components:
+
+| component | parameters | C |
+|---|---|---|
+| `StretchedExp(name="intrinsic")` | `T2`, `n` | exp(−(t/T2)ⁿ) |
+| `GaussianNoiseDecay(factory, p0, bounds, name)` | any; `factory(**params)` returns Gaussian sources | filter-function theory |
+| `TelegraphDecay(name="rtn", asymmetric=False)` | `rate`, `jump` (or `rate_up`, `rate_down`, `jump`) | exact telegraph theory, finite pulses |
+
+`fit_decay(t, y, sigma, DecayModel([...], sequence))` and
+`fit_joint([Curve(t, y, sigma, model, name), ...], shared=["intrinsic.T2", ...])` return a
+`FitResult` (parameters, errors, covariance, χ², AIC, BIC, `table()`). Starting values come
+from a grid (telegraph rate × jump, intrinsic T2) with offset/amplitude solved linearly.
+`profile_chi2` / `profile_interval` give profile-likelihood bounds: in strong coupling the
+telegraph jump is only bounded from below, and with multimodal profiles the Δχ² = 4
+interval can under-cover. See `examples/decay_fitting_demo.py`.
 
 ## Building blocks
 
@@ -174,6 +202,7 @@ nvsim/          library
   noise.py  ensemble.py  filter_function.py  readout.py        noise, Monte Carlo, theory, PL
   telegraph.py                                                exact telegraph-noise coherence
   tabulated.py                                                SpectrumNoise, TraceNoise, data-contract helpers
+  coherence.py  fitting.py                                    mixed-noise theory, decay fitting
   plotting.py  bloch.py  noise_plots.py                        figures and animations
   study.py                                                     NoiseStudy + run_study
 studies/        configurable studies (noise_study.py)
@@ -189,6 +218,7 @@ output/         generated figures, GIFs and CSVs
 | `examples/spin_echo_demo.py` | echo under no / static / AC fields, φ → −φ, echo vs Ramsey, AC response vs theory |
 | `examples/dynamical_decoupling_demo.py` | XY8 under a matched AC field, filter narrowing for echo / CPMG / XY8 |
 | `examples/telegraph_noise_demo.py` | echo under telegraph noise, weak vs strong coupling: Monte Carlo vs exact vs (wrong) Gaussian theory |
+| `examples/decay_fitting_demo.py` | synthetic on/off-hotspot echoes fitted jointly with four models, AIC table, jump profile |
 
 ### VS Code
 

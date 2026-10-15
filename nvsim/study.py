@@ -21,9 +21,10 @@ import numpy as np
 
 from .drive import MWChannel
 from .ensemble import sweep_ensemble
-from .filter_function import coherence_decay, filter_function
+from .coherence import exact_coherences, unsupported_sources
+from .filter_function import filter_function
 from .fields import ACField
-from .noise import CarbonBath, NarrowbandNoise, OUNoise, QuasiStaticNoise, flatten, non_gaussian
+from .noise import CarbonBath, NarrowbandNoise, OUNoise, QuasiStaticNoise, TelegraphNoise, flatten
 from .noise_plots import (
     SEQUENCE_COLORS, plot_filter_functions, plot_noise_spectrum, plot_noise_traces, plot_signal,
 )
@@ -209,17 +210,24 @@ class NoiseStudy:
     n_noise_traces: int = 3
 
     @property
-    def gaussian_theory(self) -> bool:
-        """Whether the Gaussian filter-function curve is computed (only valid for Gaussian noise)."""
-        return self.theory and bool(self.noise) and not non_gaussian(self.noise)
+    def theory_available(self) -> bool:
+        """Whether an exact theory curve is computed: every source must be Gaussian
+        or telegraph (:mod:`nvsim.coherence`)."""
+        return self.theory and bool(self.noise) and not unsupported_sources(self.noise)
+
+    @property
+    def theory_label(self) -> str:
+        if any(isinstance(s, TelegraphNoise) for s in flatten(self.noise)):
+            return "exact theory (Gaussian × telegraph)"
+        return "Gaussian theory"
 
     @property
     def theory_note(self) -> str | None:
-        """Why the Gaussian-theory curve is missing, if it is."""
-        bad = non_gaussian(self.noise)
+        """Why the theory curve is missing, if it is."""
+        bad = unsupported_sources(self.noise)
         if self.theory and bad:
             names = ", ".join(sorted({s.label for s in bad}))
-            return f"Gaussian theory not shown: non-Gaussian noise ({names})"
+            return f"Theory not shown: no exact theory for non-Gaussian noise ({names})"
         return None
 
     @property
@@ -275,8 +283,9 @@ def run_scan(study: NoiseStudy, scan: SequenceScan, rng) -> ScanOutcome:
     p0_clean = clean.population("0")
 
     p0_theory = None
-    if study.gaussian_theory:
-        decay = np.array([coherence_decay(scan.build(t).compile(channels), study.noise) for t in scan.taus])
+    if study.theory_available:
+        segments = [scan.build(t).compile(channels) for t in scan.taus]
+        decay = np.real(exact_coherences(segments, study.noise, study.drive.transition))
         p0_theory = 0.5 + (p0_clean - 0.5) * decay
 
     signal, signal_err = _to_signal(study, mc.population("0"), mc.population_error("0"), rng)
@@ -348,7 +357,8 @@ def figure_signals(study: NoiseStudy, outcomes: list[ScanOutcome]):
                              sharex=True, sharey=True)
     for i, (ax, out) in enumerate(zip(axes[:, 0], outcomes)):
         plot_signal(ax, out.scan.x, out.signal, out.signal_error, out.signal_theory, out.signal_noise_free,
-                    color=SEQUENCE_COLORS[i % len(SEQUENCE_COLORS)], label=f"{out.scan.label} (Monte Carlo)")
+                    color=SEQUENCE_COLORS[i % len(SEQUENCE_COLORS)], label=f"{out.scan.label} (Monte Carlo)",
+                    theory_label=study.theory_label)
         ax.set_ylabel(_signal_label(study))
         ax.set_title(f"{out.scan.label}   ({_window_note(out.scan)})", color=TEXT_COLOR, loc="left", fontsize=10)
         ax.legend(frameon=False, loc="upper left", bbox_to_anchor=(1.0, 1.0), fontsize=8)
@@ -384,7 +394,7 @@ def figure_spectroscopy(study: NoiseStudy, outcomes: list[ScanOutcome]):
     ax_c.axhline(0, color="#8a8984", lw=0.8)
     ax_c.set_ylabel("coherence\n(relative to no noise)")
     ax_c.set_ylim(-0.1, 1.1)
-    legend_note = "points: Monte Carlo, dashed: Gaussian theory" if study.gaussian_theory else (
+    legend_note = f"points: Monte Carlo, dashed: {study.theory_label}" if study.theory_available else (
         study.theory_note or "points: Monte Carlo")
     ax_c.set_title(f"Noise spectroscopy view: dips where the filter overlaps the noise ({legend_note})",
                    color=TEXT_COLOR, fontsize=10, loc="left")

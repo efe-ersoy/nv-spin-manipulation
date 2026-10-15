@@ -131,16 +131,19 @@ class TestGaussianGuard(unittest.TestCase):
                 with self.assertWarns(UserWarning):
                     coherence_decay(segs, [src], allow_non_gaussian=True)
 
-    def test_study_skips_gaussian_theory(self):
+    def test_study_theory_availability(self):
         scan = echo_scan([0.5, 1.0, 2.0])
         kwargs = dict(n_realizations=20, readout=Readout(), seed=0)
-        noisy = NoiseStudy("rtn", NV, FAST, [scan], [STRONG], **kwargs)
-        self.assertFalse(noisy.gaussian_theory)
+        # No exact theory for fixed-amplitude narrowband noise: curve skipped, with a note.
+        noisy = NoiseStudy("fixed", NV, FAST, [scan], [NarrowbandNoise(1 * uT, 1.0, gaussian=False)], **kwargs)
+        self.assertFalse(noisy.theory_available)
         self.assertIn("non-Gaussian", noisy.theory_note)
         self.assertIsNone(run_scan(noisy, scan, np.random.default_rng(0)).p0_theory)
-        gaussian = NoiseStudy("ou", NV, FAST, [scan], [OUNoise(2 * uT, 1.0)], **kwargs)
-        self.assertIsNone(gaussian.theory_note)
-        self.assertIsNotNone(run_scan(gaussian, scan, np.random.default_rng(0)).p0_theory)
+        # Gaussian and telegraph (T104): exact theory available.
+        for noise in ([OUNoise(2 * uT, 1.0)], [STRONG, OUNoise(2 * uT, 1.0)]):
+            study = NoiseStudy("ok", NV, FAST, [scan], noise, **kwargs)
+            self.assertIsNone(study.theory_note)
+            self.assertIsNotNone(run_scan(study, scan, np.random.default_rng(0)).p0_theory)
 
 
 class TestMonteCarlo(unittest.TestCase):

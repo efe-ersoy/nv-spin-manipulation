@@ -7,6 +7,19 @@ pulse. With a fractional ``contrast`` C the normalised PL is
 
 Optionally photon shot noise is added: each point is the average of ``shots``
 readouts that detect on average ``photons_per_shot`` photons from |0>.
+
+Echo / DD scans record the normalised difference of the two sequences that end
+with +pi/2 and -pi/2,
+
+    se_norm = (N2 - N1) / (N2 + N1),
+
+computed by :meth:`Readout.se_norm` from the two final |0> populations. One
+readout maps the coherence C onto P0 = (1 + C)/2 ("bright" ending), the other
+onto (1 - C)/2 ("dark" ending), so se_norm = -+ contrast C / (2 - contrast):
+its magnitude for full coherence is contrast / (2 - contrast) (0.176 for 0.3).
+Which of the two is N2 is not yet confirmed for the lab software, so it is a
+parameter (``n2_bright``; default False = N2 is the dark-ending readout, which
+gives the negative se_norm measured at short delay).
 """
 
 from dataclasses import dataclass
@@ -57,3 +70,22 @@ class Readout:
         counts = rng.poisson(expected)
         norm = self.shots * self.photons_per_shot
         return counts / norm, np.sqrt(np.maximum(counts, 1)) / norm
+
+    def se_norm(self, p0_n1, p0_n2) -> np.ndarray:
+        """(N2 - N1) / (N2 + N1) from the final |0> populations of the two readouts
+        (no shot noise; counts are proportional to the PL)."""
+        pl1, pl2 = self.pl({"0": p0_n1}), self.pl({"0": p0_n2})
+        return (pl2 - pl1) / (pl2 + pl1)
+
+    def se_norm_amplitude(self, n2_bright: bool = False) -> float:
+        """se_norm for full coherence C = 1: -contrast/(2 - contrast), sign flipped if
+        N2 is the bright-ending readout."""
+        magnitude = self.contrast / (2.0 - self.contrast)
+        return magnitude if n2_bright else -magnitude
+
+    def se_norm_from_coherence(self, coherence, n2_bright: bool = False) -> np.ndarray:
+        """se_norm for coherence C (real part; readout along the coherence axis)."""
+        c = np.real(np.asarray(coherence))
+        bright, dark = 0.5 * (1 + c), 0.5 * (1 - c)
+        return self.se_norm(dark, bright) if n2_bright else self.se_norm(bright, dark)
+

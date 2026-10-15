@@ -73,12 +73,13 @@ def plot_noise_traces(sources, duration: float, n_traces: int = 3, rng=None, ax=
     return style_axes(ax)
 
 
-def plot_signal(ax, x, y, y_err, theory=None, noise_free=None, color=SEQUENCE_COLORS[0], label="simulation"):
+def plot_signal(ax, x, y, y_err, theory=None, noise_free=None, color=SEQUENCE_COLORS[0], label="simulation",
+                theory_label="Gaussian theory"):
     """Monte Carlo points with error bars, plus optional theory and noise-free curves."""
     if noise_free is not None:
         ax.plot(x, noise_free, color=NOISE_FREE_COLOR, lw=1.5, label="no noise")
     if theory is not None:
-        ax.plot(x, theory, color=THEORY_COLOR, lw=1.2, ls=(0, (4, 2)), label="Gaussian theory")
+        ax.plot(x, theory, color=THEORY_COLOR, lw=1.2, ls=(0, (4, 2)), label=theory_label)
     ax.errorbar(x, y, yerr=y_err, fmt="o", ms=4, color=color, ecolor=color, elinewidth=1,
                 capsize=0, label=label, zorder=3)
     return style_axes(ax)

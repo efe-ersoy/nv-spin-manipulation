@@ -28,7 +28,6 @@ every switch during the sequence fully dephases that shot.
 """
 
 import numpy as np
-from scipy.linalg import expm
 
 from .constants import GAMMA_E, TWO_PI
 from .filter_function import toggling_pieces
@@ -42,6 +41,66 @@ def _coupling(transition) -> float:
     return TWO_PI * GAMMA_E * (1.0 if normalize_transition(transition) == "-1" else -1.0)
 
 
+def _expm2(a: np.ndarray) -> np.ndarray:
+    """Matrix exponential of a batch of 2 x 2 matrices, shape (..., 2, 2).
+
+    exp(A) = e^m [cosh(s) I + sinh(s)/s (A - m I)] with m = tr(A)/2 and
+    s^2 = -det(A - m I), written with e^(m +- s) so that large decay rates do
+    not overflow.
+    """
+    m = 0.5 * (a[..., 0, 0] + a[..., 1, 1])
+    b11 = a[..., 0, 0] - m
+    s = np.sqrt(b11**2 + a[..., 0, 1] * a[..., 1, 0] + 0j)
+    ep, em = np.exp(m + s), np.exp(m - s)
+    small = np.abs(s) < 1e-8
+    s_safe = np.where(small, 1.0, s)
+    cosh_part = 0.5 * (ep + em)
+    sinh_part = np.where(small, np.exp(m) * (1 + s**2 / 6), 0.5 * (ep - em) / s_safe)
+    out = np.empty(a.shape, dtype=complex)
+    out[..., 0, 0] = cosh_part + sinh_part * b11
+    out[..., 1, 1] = cosh_part - sinh_part * b11
+    out[..., 0, 1] = sinh_part * a[..., 0, 1]
+    out[..., 1, 0] = sinh_part * a[..., 1, 0]
+    return out
+
+
+def telegraph_coherences(segments_list, source: TelegraphNoise, transition="-1",
+                         pulse_steps: int = 16) -> np.ndarray:
+    """:func:`telegraph_coherence` for many compiled sequences at once.
+
+    Sequences of the same family (e.g. one echo per delay) share the structure
+    of their toggling function, so every piece is propagated for all of them
+    with one batched 2 x 2 exponential. Returns a complex array.
+    """
+    if not isinstance(source, TelegraphNoise):
+        raise TypeError("telegraph_coherence needs a TelegraphNoise source.")
+    up, down = source.rate_up, source.rate_down
+    generator = np.array([[-up, down], [up, -down]], dtype=complex)
+    v = _coupling(transition) * np.diag([source.b_low, source.b_high]).astype(complex)
+    start = np.array([source.p_low, source.p_high], dtype=complex)
+
+    pieces_list = [toggling_pieces(segments) for segments in segments_list]
+    groups: dict[tuple, list[int]] = {}
+    for i, pieces in enumerate(pieces_list):
+        groups.setdefault(tuple((p.kind, p.sign) for p in pieces), []).append(i)
+
+    result = np.empty(len(segments_list), dtype=complex)
+    for signature, members in groups.items():
+        w = np.repeat(start[None, :], len(members), axis=0)
+        durations = np.array([[p.duration for p in pieces_list[i]] for i in members]).reshape(len(members), -1)
+        for j, (kind, sign) in enumerate(signature):
+            if kind == "free":
+                steps = [(float(sign), durations[:, j])]
+            else:
+                h = durations[:, j] / pulse_steps
+                steps = [(sign * np.cos(np.pi * (k + 0.5) / pulse_steps), h) for k in range(pulse_steps)]
+            for y, dt in steps:
+                propagator = _expm2((generator + 1j * y * v)[None, :, :] * dt[:, None, None])
+                w = np.einsum("nij,nj->ni", propagator, w)
+        result[members] = w.sum(axis=1)
+    return result
+
+
 def telegraph_coherence(segments: list[Segment], source: TelegraphNoise, transition="-1",
                         pulse_steps: int = 16) -> complex:
     """Exact <exp(i phi)> from a telegraph source over a compiled sequence.
@@ -51,23 +110,10 @@ def telegraph_coherence(segments: list[Segment], source: TelegraphNoise, transit
     applied in ``pulse_steps`` piecewise-constant steps (the convention of
     :mod:`nvsim.filter_function`). The real part is the coherence factor that
     multiplies the signal contrast; a non-zero imaginary part comes from the
-    mean field (a static offset).
+    mean field (a static offset). See :func:`telegraph_coherences` for many
+    sequences at once.
     """
-    if not isinstance(source, TelegraphNoise):
-        raise TypeError("telegraph_coherence needs a TelegraphNoise source.")
-    up, down = source.rate_up, source.rate_down
-    generator = np.array([[-up, down], [up, -down]], dtype=complex)
-    v = _coupling(transition) * np.diag([source.b_low, source.b_high]).astype(complex)
-    w = np.array([source.p_low, source.p_high], dtype=complex)
-    for piece in toggling_pieces(segments):
-        if piece.kind == "free":
-            w = expm((generator + 1j * piece.sign * v) * piece.duration) @ w
-            continue
-        h = piece.duration / pulse_steps
-        for k in range(pulse_steps):
-            y = piece.sign * np.cos(np.pi * (k + 0.5) / pulse_steps)
-            w = expm((generator + 1j * y * v) * h) @ w
-    return complex(w.sum())
+    return complex(telegraph_coherences([segments], source, transition, pulse_steps)[0])
 
 
 # --------------------------------------------------------------------------- symmetric closed forms

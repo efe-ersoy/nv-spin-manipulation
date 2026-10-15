@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 
 from nvsim import MWChannel, NVCenter, mT, uT
-from nvsim.filter_function import coherence_decay
+from nvsim.coherence import exact_coherences
 from nvsim.noise import CarbonBath, NarrowbandNoise, total_psd
 from nvsim.readout import Readout
 from nvsim.simulate import channel_map, sweep
@@ -104,7 +104,8 @@ def theory_pl(scan, nv, noise):
     """PL from the noise-free simulation times the Gaussian decay factor."""
     channels = channel_map(DRIVE)
     p0_clean = sweep(scan.taus, scan.build, nv, DRIVE).population("0")
-    decay = np.array([coherence_decay(scan.build(t).compile(channels), noise) for t in scan.taus])
+    segments = [scan.build(t).compile(channels) for t in scan.taus]
+    decay = np.real(exact_coherences(segments, noise))  # Gaussian x telegraph, exact
     return READOUT.pl({"0": 0.5 + (p0_clean - 0.5) * decay})
 
 
