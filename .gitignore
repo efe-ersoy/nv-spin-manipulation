@@ -2,3 +2,12 @@
 __pycache__/
 *.pyc
 output/
+
+# packaging artefacts (pip install -e . / builds)
+*.egg-info/
+build/
+dist/
+
+# .env is tracked on purpose: it only sets PYTHONPATH and PYTHONUTF8 for VS Code
+# (python.envFile). Put anything secret in .env.local instead, which is ignored.
+.env.local

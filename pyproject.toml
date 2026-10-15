@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nvsim"
+version = "0.1.0"
+description = "Simulation and visualisation of NV-centre spin manipulation: pulse sequences, magnetic noise, Monte Carlo ensembles and filter-function theory"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Efe Ersoy", email = "efe.ersoy@unibas.ch" }]
+# Lower bounds = APIs the code relies on; tested with numpy 2.5.4, scipy 1.18.1,
+# matplotlib 3.11.2, qutip 5.3.1, pillow 12.3.0 on Python 3.14.
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
+    "qutip>=5.0",
+    "pillow>=10.0",
+]
+
+[tool.setuptools]
+# Flat layout: only the library is packaged (examples/, studies/, tests/ are not).
+packages = ["nvsim"]

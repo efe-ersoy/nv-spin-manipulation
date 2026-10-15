@@ -4,6 +4,21 @@ Simulation and visualisation of NV-centre ground-state spin manipulation with
 [QuTiP](https://qutip.org). Units: **MHz, µs, mT** (frequencies are cyclic; no 2π).
 Use the helpers `uT` and `G` for other field units: `4 * uT` = 0.004 mT, `50 * G` = 5 mT.
 
+## Install
+
+Requires Python ≥ 3.11. Dependencies (numpy, scipy, matplotlib, qutip, pillow) are
+listed in [pyproject.toml](pyproject.toml).
+
+```
+python -m venv .venv
+.venv\Scripts\activate            # Windows (source .venv/bin/activate elsewhere)
+pip install -e .                  # editable install of nvsim
+```
+
+From another repository's venv (e.g. `nv-texture-imaging`):
+`pip install -e ../nv-spin-manipulation`. Inside this repo the scripts also run without
+installing, because VS Code puts the repo root on `PYTHONPATH` (see below).
+
 ## Noise studies (start here)
 
 [studies/noise_study.py](studies/noise_study.py) is the main entry point for
