@@ -113,8 +113,8 @@ def cell_averages(segments: list[Segment], edges: np.ndarray) -> np.ndarray:
     return total / (b - a)
 
 
-def filter_function(segments: list[Segment], f) -> np.ndarray:
-    """|Y(f)|^2 [us^2] at frequencies ``f`` [MHz] (analytic)."""
+def toggling_transform(segments: list[Segment], f) -> np.ndarray:
+    """Y(f) = integral y(t) exp(-2 pi i f t) dt [us] (complex, analytic)."""
     w = TWO_PI * np.asarray(f, dtype=float)
     Y = np.zeros_like(w, dtype=complex)
     small = np.abs(w) < 1e-12
@@ -131,7 +131,43 @@ def filter_function(segments: list[Segment], f) -> np.ndarray:
             term = np.exp(-1j * w * p.start) * 1j * w * (1 + np.exp(-1j * w * T)) / safe
             term = np.where(near, np.exp(-1j * w * p.start) * T / 2, term)
         Y += p.sign * term
-    return np.abs(Y) ** 2
+    return Y
+
+
+def filter_function(segments: list[Segment], f) -> np.ndarray:
+    """|Y(f)|^2 [us^2] at frequencies ``f`` [MHz] (analytic)."""
+    return np.abs(toggling_transform(segments, f)) ** 2
+
+
+def toggling_correlation(segments: list[Segment], dt: float):
+    """Autocorrelation of the cell-averaged toggling function on a uniform grid.
+
+    Returns ``(step, corr)`` with ``corr[k]`` the correlation at lag ``k * step``
+    for k = 0 .. n-1 (it is symmetric in the lag), such that
+    ``<phi^2> = (2 pi gamma_e step)^2 sum_k w_k C(k step) corr[k]`` with
+    w_0 = 1, w_k = 2. ``step`` is ``dt`` adjusted to fit the sequence exactly
+    (and limited to MAX_GRID_POINTS cells). Returns (0, empty) without coherence.
+    """
+    pieces = toggling_pieces(segments)
+    if not pieces:
+        return 0.0, np.zeros(0)
+    t0, t1 = pieces[0].start, pieces[-1].end
+    dt = max(dt, (t1 - t0) / MAX_GRID_POINTS)
+    n = max(2, int(np.ceil((t1 - t0) / dt)))
+    edges = np.linspace(t0, t1, n + 1)
+    y = cell_averages(segments, edges)
+    corr = fftconvolve(y, y[::-1])  # lags -(n-1) .. n-1
+    return float(edges[1] - edges[0]), corr[n - 1:]
+
+
+def default_step(segments: list[Segment], sources) -> float:
+    """Grid step used by :func:`phase_variance` when none is given."""
+    pieces = toggling_pieces(segments)
+    if not pieces:
+        return np.inf
+    # Cell averages integrate the toggling pieces (incl. pi pulses) exactly,
+    # so the grid only has to resolve the noise correlation function.
+    return min(max_step(sources), (pieces[-1].end - pieces[0].start) / 2000)
 
 
 def check_gaussian(sources, allow_non_gaussian: bool = False) -> None:
@@ -154,22 +190,12 @@ def phase_variance(segments: list[Segment], sources, dt: float | None = None,
     Raises ValueError for non-Gaussian sources unless ``allow_non_gaussian``
     (then warns and treats them as Gaussian with the same autocovariance)."""
     check_gaussian(sources, allow_non_gaussian)
-    pieces = toggling_pieces(segments)
-    if not pieces or not sources:
+    if not sources or not toggling_pieces(segments):
         return 0.0
-    t0, t1 = pieces[0].start, pieces[-1].end
-    if dt is None:
-        # Cell averages integrate the toggling pieces (incl. pi pulses) exactly,
-        # so the grid only has to resolve the noise correlation function.
-        dt = min(max_step(sources), (t1 - t0) / 2000)
-    dt = max(dt, (t1 - t0) / MAX_GRID_POINTS)
-    n = max(2, int(np.ceil((t1 - t0) / dt)))
-    edges = np.linspace(t0, t1, n + 1)
-    dt = edges[1] - edges[0]
-    y = cell_averages(segments, edges)
-    corr = fftconvolve(y, y[::-1])  # lags -(n-1) .. n-1
-    lags = (np.arange(len(corr)) - (n - 1)) * dt
-    return float((TWO_PI * GAMMA_E) ** 2 * dt**2 * np.sum(total_autocorrelation(sources, lags) * corr))
+    step, corr = toggling_correlation(segments, default_step(segments, sources) if dt is None else dt)
+    lags = np.arange(len(corr)) * step
+    weights = np.where(np.arange(len(corr)) == 0, 1.0, 2.0) * corr
+    return float((TWO_PI * GAMMA_E * step) ** 2 * np.sum(total_autocorrelation(sources, lags) * weights))
 
 
 def coherence_decay(segments: list[Segment], sources, dt: float | None = None,

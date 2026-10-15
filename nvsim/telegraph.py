@@ -101,6 +101,34 @@ def telegraph_coherences(segments_list, source: TelegraphNoise, transition="-1",
     return result
 
 
+def telegraph_coherence_array(segments: list[Segment], b_low, b_high, rate_up, rate_down, transition="-1",
+                              pulse_steps: int = 16) -> np.ndarray:
+    """Exact telegraph coherence of one sequence for arrays of telegraph
+    parameters (e.g. one fluctuator per map pixel); arrays broadcast together,
+    the result has their shape (complex)."""
+    b_low, b_high, up, down = np.broadcast_arrays(*(np.asarray(x, dtype=float)
+                                                    for x in (b_low, b_high, rate_up, rate_down)))
+    shape = b_low.shape
+    b_low, b_high, up, down = (x.ravel() for x in (b_low, b_high, up, down))
+    n = b_low.size
+    generator = np.zeros((n, 2, 2), dtype=complex)
+    generator[:, 0, 0], generator[:, 0, 1] = -up, down
+    generator[:, 1, 0], generator[:, 1, 1] = up, -down
+    v = np.zeros((n, 2, 2), dtype=complex)
+    v[:, 0, 0], v[:, 1, 1] = _coupling(transition) * b_low, _coupling(transition) * b_high
+    total = up + down
+    w = np.stack([down / total, up / total], axis=1).astype(complex)  # stationary (p_low, p_high)
+    for piece in toggling_pieces(segments):
+        if piece.kind == "free":
+            steps = [(float(piece.sign), piece.duration)]
+        else:
+            h = piece.duration / pulse_steps
+            steps = [(piece.sign * np.cos(np.pi * (k + 0.5) / pulse_steps), h) for k in range(pulse_steps)]
+        for y, dt in steps:
+            w = np.einsum("nij,nj->ni", _expm2((generator + 1j * y * v) * dt), w)
+    return w.sum(axis=1).reshape(shape)
+
+
 def telegraph_coherence(segments: list[Segment], source: TelegraphNoise, transition="-1",
                         pulse_steps: int = 16) -> complex:
     """Exact <exp(i phi)> from a telegraph source over a compiled sequence.

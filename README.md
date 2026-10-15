@@ -110,7 +110,8 @@ check the `units` attributes. They only need `ds[name].values / .dims / .attrs`,
   contrast 0.3); which readout is N₂ is a parameter (`n2_bright`, default: N₂ ends dark).
 
 The Monte Carlo and theory agree within statistical error (tested in `tests/test_noise.py`,
-`tests/test_telegraph.py`, `tests/test_tabulated.py` and `tests/test_fitting.py`).
+`tests/test_telegraph.py`, `tests/test_tabulated.py`, `tests/test_fitting.py` and
+`tests/test_maps.py`).
 
 ## Fitting measured decays (`nvsim/fitting.py`)
 
@@ -130,6 +131,25 @@ from a grid (telegraph rate × jump, intrinsic T2) with offset/amplitude solved 
 `profile_chi2` / `profile_interval` give profile-likelihood bounds: in strong coupling the
 telegraph jump is only bounded from below, and with multimodal profiles the Δχ² = 4
 interval can under-cover. See `examples/decay_fitting_demo.py`.
+
+## Signal maps (`nvsim/maps.py`)
+
+One sequence, many pixels that differ in their noise and fields:
+
+| description | meaning |
+|---|---|
+| `PixelSource(factory, **params)` | one source type with per-pixel parameter arrays, e.g. `PixelSource(OUNoise, b_rms=b_map, correlation_time=tc_map)`, `PixelSource(TelegraphNoise.symmetric, b=b_map, rate=0.3)` |
+| `PixelSpectrum(f, psd, lines=[(f0, variance_map)])` | Gaussian noise with per-pixel PSDs on a common grid, `psd` shape (n_f, *map) |
+| `PixelField(StaticField / ACField, random_phase=False, **params)` | deterministic per-pixel fields; `random_phase=True` for an AC field not locked to the sequence (e.g. a 32 kHz tip oscillation) |
+| plain source / field | the same in every pixel |
+
+`coherence_map(sequence, drive, sources, fields)` returns the complex coherence per pixel
+(Gaussian part as one matrix–vector product over a shared lag grid, PSD maps as `S · W` with
+weights computed once, telegraph sources by batched exact transfer matrices, fields as
+exp(iφ) or J₀ for random phase; 100 × 100 OU pixels in ~0.2 s, equal to a per-pixel loop to
+1e-15). `signal_map(...)` adds both readout populations and `se_norm`;
+`monte_carlo_map(...)` does any source by Monte Carlo per pixel (`reuse_noise`, progress
+display; ~0.05–0.3 s per pixel). See `examples/pixel_map_demo.py`.
 
 ## Building blocks
 
@@ -203,6 +223,7 @@ nvsim/          library
   telegraph.py                                                exact telegraph-noise coherence
   tabulated.py                                                SpectrumNoise, TraceNoise, data-contract helpers
   coherence.py  fitting.py                                    mixed-noise theory, decay fitting
+  maps.py                                                     echo / DD signal maps (many pixels)
   plotting.py  bloch.py  noise_plots.py                        figures and animations
   study.py                                                     NoiseStudy + run_study
 studies/        configurable studies (noise_study.py)
@@ -219,6 +240,7 @@ output/         generated figures, GIFs and CSVs
 | `examples/dynamical_decoupling_demo.py` | XY8 under a matched AC field, filter narrowing for echo / CPMG / XY8 |
 | `examples/telegraph_noise_demo.py` | echo under telegraph noise, weak vs strong coupling: Monte Carlo vs exact vs (wrong) Gaussian theory |
 | `examples/decay_fitting_demo.py` | synthetic on/off-hotspot echoes fitted jointly with four models, AIC table, jump profile |
+| `examples/pixel_map_demo.py` | 100 × 100 se_norm maps: localised telegraph fluctuators vs tip oscillation in a lattice gradient; Monte Carlo line cut |
 
 ### VS Code
 
