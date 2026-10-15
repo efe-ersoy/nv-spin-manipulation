@@ -16,15 +16,22 @@ Conventions for y(t): the first pulse (a pi/2) starts the coherence, every
 following pi pulse flips the sign (smoothly as cos(pi u) while the pulse is
 on, u the fraction of the pulse), and the last pulse (readout) ends it. Pulses
 with other rotation angles in the middle of a sequence are not supported.
+
+The decay formula holds only for Gaussian noise. :func:`phase_variance` and
+:func:`coherence_decay` raise for non-Gaussian sources (``source.gaussian`` is
+False, e.g. :class:`~nvsim.noise.TelegraphNoise`) unless
+``allow_non_gaussian=True``, which warns and returns the Gaussian approximation.
+Exact results for telegraph noise are in :mod:`nvsim.telegraph`.
 """
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.signal import fftconvolve
 
 from .constants import GAMMA_E, TWO_PI
-from .noise import max_step, total_autocorrelation
+from .noise import max_step, non_gaussian, total_autocorrelation
 from .pulses import Segment
 
 #: Relative tolerance for recognising a pi pulse from Rabi frequency x duration.
@@ -127,8 +134,26 @@ def filter_function(segments: list[Segment], f) -> np.ndarray:
     return np.abs(Y) ** 2
 
 
-def phase_variance(segments: list[Segment], sources, dt: float | None = None) -> float:
-    """<phi^2> [rad^2] picked up from the Gaussian noise ``sources``."""
+def check_gaussian(sources, allow_non_gaussian: bool = False) -> None:
+    """Raise (or, with ``allow_non_gaussian``, warn) if any source is not Gaussian."""
+    bad = non_gaussian(sources)
+    if not bad:
+        return
+    names = ", ".join(sorted({s.label for s in bad}))
+    message = (f"Gaussian filter-function theory is not valid for non-Gaussian noise ({names}); "
+               "use nvsim.telegraph for telegraph noise or the Monte Carlo ensemble.")
+    if not allow_non_gaussian:
+        raise ValueError(message)
+    warnings.warn(message + " Returning the Gaussian approximation.", stacklevel=3)
+
+
+def phase_variance(segments: list[Segment], sources, dt: float | None = None,
+                   allow_non_gaussian: bool = False) -> float:
+    """<phi^2> [rad^2] picked up from the Gaussian noise ``sources``.
+
+    Raises ValueError for non-Gaussian sources unless ``allow_non_gaussian``
+    (then warns and treats them as Gaussian with the same autocovariance)."""
+    check_gaussian(sources, allow_non_gaussian)
     pieces = toggling_pieces(segments)
     if not pieces or not sources:
         return 0.0
@@ -147,6 +172,8 @@ def phase_variance(segments: list[Segment], sources, dt: float | None = None) ->
     return float((TWO_PI * GAMMA_E) ** 2 * dt**2 * np.sum(total_autocorrelation(sources, lags) * corr))
 
 
-def coherence_decay(segments: list[Segment], sources, dt: float | None = None) -> float:
-    """Gaussian decay factor exp(-<phi^2>/2) of the spin coherence."""
-    return float(np.exp(-0.5 * phase_variance(segments, sources, dt)))
+def coherence_decay(segments: list[Segment], sources, dt: float | None = None,
+                    allow_non_gaussian: bool = False) -> float:
+    """Gaussian decay factor exp(-<phi^2>/2) of the spin coherence (see
+    :func:`phase_variance` for ``allow_non_gaussian``)."""
+    return float(np.exp(-0.5 * phase_variance(segments, sources, dt, allow_non_gaussian)))

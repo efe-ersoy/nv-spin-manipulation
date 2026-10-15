@@ -23,7 +23,7 @@ from .drive import MWChannel
 from .ensemble import sweep_ensemble
 from .filter_function import coherence_decay, filter_function
 from .fields import ACField
-from .noise import CarbonBath, NarrowbandNoise, OUNoise, QuasiStaticNoise, flatten
+from .noise import CarbonBath, NarrowbandNoise, OUNoise, QuasiStaticNoise, flatten, non_gaussian
 from .noise_plots import (
     SEQUENCE_COLORS, plot_filter_functions, plot_noise_spectrum, plot_noise_traces, plot_signal,
 )
@@ -209,6 +209,20 @@ class NoiseStudy:
     n_noise_traces: int = 3
 
     @property
+    def gaussian_theory(self) -> bool:
+        """Whether the Gaussian filter-function curve is computed (only valid for Gaussian noise)."""
+        return self.theory and bool(self.noise) and not non_gaussian(self.noise)
+
+    @property
+    def theory_note(self) -> str | None:
+        """Why the Gaussian-theory curve is missing, if it is."""
+        bad = non_gaussian(self.noise)
+        if self.theory and bad:
+            names = ", ".join(sorted({s.label for s in bad}))
+            return f"Gaussian theory not shown: non-Gaussian noise ({names})"
+        return None
+
+    @property
     def t_pi(self) -> float:
         return 1.0 / (2.0 * self.drive.rabi_frequency)
 
@@ -261,7 +275,7 @@ def run_scan(study: NoiseStudy, scan: SequenceScan, rng) -> ScanOutcome:
     p0_clean = clean.population("0")
 
     p0_theory = None
-    if study.theory and study.noise:
+    if study.gaussian_theory:
         decay = np.array([coherence_decay(scan.build(t).compile(channels), study.noise) for t in scan.taus])
         p0_theory = 0.5 + (p0_clean - 0.5) * decay
 
@@ -340,8 +354,10 @@ def figure_signals(study: NoiseStudy, outcomes: list[ScanOutcome]):
         ax.legend(frameon=False, loc="upper left", bbox_to_anchor=(1.0, 1.0), fontsize=8)
     axes[-1, 0].set_xlabel(X_AXES[outcomes[0].scan.axis])
     axes[-1, 0].set_xlim(0, max(out.scan.x.max() for out in outcomes) * 1.01)
-    fig.suptitle(f"{study.name}: {_signal_label(study)}  ({study.n_realizations} noise realisations per point)",
-                 color=TEXT_COLOR)
+    title = f"{study.name}: {_signal_label(study)}  ({study.n_realizations} noise realisations per point)"
+    if study.theory_note:
+        title += f"\n{study.theory_note}"
+    fig.suptitle(title, color=TEXT_COLOR)
     return fig
 
 
@@ -368,8 +384,10 @@ def figure_spectroscopy(study: NoiseStudy, outcomes: list[ScanOutcome]):
     ax_c.axhline(0, color="#8a8984", lw=0.8)
     ax_c.set_ylabel("coherence\n(relative to no noise)")
     ax_c.set_ylim(-0.1, 1.1)
-    ax_c.set_title("Noise spectroscopy view: dips where the filter overlaps the noise "
-                   "(points: Monte Carlo, dashed: Gaussian theory)", color=TEXT_COLOR, fontsize=10, loc="left")
+    legend_note = "points: Monte Carlo, dashed: Gaussian theory" if study.gaussian_theory else (
+        study.theory_note or "points: Monte Carlo")
+    ax_c.set_title(f"Noise spectroscopy view: dips where the filter overlaps the noise ({legend_note})",
+                   color=TEXT_COLOR, fontsize=10, loc="left")
     ax_c.legend(frameon=False, loc="upper left", bbox_to_anchor=(1.0, 1.0), fontsize=8)
     style_axes(ax_c)
     f = np.geomspace(0.9 * f_lo, 1.1 * f_hi, 3000)
@@ -430,6 +448,8 @@ def _summary(study: NoiseStudy) -> str:
     if freqs:
         lines.append("  lines: " + ", ".join(f"{1e3 * f:.4g} kHz (DD dip at tau = {1 / (2 * f) - study.t_pi:.4g} us)"
                                             for f in freqs))
+    if study.theory_note:
+        lines.append(f"  {study.theory_note}")
     lines.append("fields:")
     lines += [f"  {f}" for f in study.fields] or ["  none"]
     lines.append("scans:")

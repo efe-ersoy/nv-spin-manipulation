@@ -56,7 +56,8 @@ or 3 T₂* if that is longer. Copy the script to keep several studies side by si
 
 ### Noise sources (`nvsim/noise.py`)
 
-All are classical Gaussian fields along the NV axis (amplitudes as rms, in mT):
+All are classical fields along the NV axis (amplitudes in mT). Every source has a
+`gaussian` flag; only Gaussian sources may be fed to the Gaussian filter-function theory.
 
 | source | spectrum | typical use |
 |---|---|---|
@@ -64,6 +65,7 @@ All are classical Gaussian fields along the NV axis (amplitudes as rms, in mT):
 | `OUNoise(b_rms, correlation_time)` | Lorentzian at 0 | fluctuating spin bath |
 | `NarrowbandNoise(b_rms, frequency, linewidth)` | Lorentzian at ±f₀ (linewidth 0 = single line) | noise at a chosen frequency; `gaussian=False` for fixed amplitude, random phase |
 | `CarbonBath(field, b_static, b_larmor, linewidth, abundance)` | quasi-static + line at f_L = γ_C·B | ¹³C bath: T₂*, echo collapses/revivals, DD dips at τ + t_π = 1/(2f_L) |
+| `TelegraphNoise(b_low, b_high, rate_up, rate_down)`, `TelegraphNoise.symmetric(b, rate)` | Lorentzian at 0, τ_c = 1/(rate_up + rate_down); **non-Gaussian** | a field jumping between two values (bubble / wall segment hopping between pinning sites); mean = static offset |
 
 The `CarbonBath` defaults (4 µT + 4 µT at 1.1 %) are phenomenological; tune them to your sample.
 
@@ -74,12 +76,22 @@ The `CarbonBath` defaults (4 µT + 4 µT at 1.1 %) are phenomenological; tune th
 * **Gaussian theory** (`nvsim/filter_function.py`): coherence decays as
   exp(−⟨φ²⟩/2), with ⟨φ²⟩ = (2πγ)² ∫ S(f) |Y(f)|² df evaluated exactly in the time
   domain from the noise autocorrelation. Exact for the Gaussian sources; finite
-  pulses are approximated (y(t) ∝ cos during π pulses).
+  pulses are approximated (y(t) ∝ cos during π pulses). `phase_variance` /
+  `coherence_decay` raise for non-Gaussian sources (`allow_non_gaussian=True` warns
+  and returns the Gaussian approximation); studies then omit the theory curve and
+  say so in the plot.
+* **Telegraph theory** (`nvsim/telegraph.py`): exact coherence for telegraph noise.
+  `telegraph_coherence(segments, source)` works for any levels, rates and sequence
+  (two-state transfer matrix); closed forms for symmetric noise with ideal pulses:
+  `rtn_fid_coherence`, `rtn_echo_coherence`, `rtn_cpmg_coherence` (also XY4/XY8).
+  Weak coupling (2πγ_e b τ_c ≪ 1) reproduces the Gaussian result; strong coupling
+  gives ≈ exp(−rate · total time) for the echo.
 * **Readout** (`nvsim/readout.py`): `Readout(contrast=0.3)` maps populations to
   normalised PL (1 for |0⟩, 1 − contrast for |±1⟩); `photons_per_shot` + `shots`
   add photon shot noise.
 
-The Monte Carlo and theory agree within statistical error (tested in `tests/test_noise.py`).
+The Monte Carlo and theory agree within statistical error (tested in `tests/test_noise.py`
+and `tests/test_telegraph.py`).
 
 ## Building blocks
 
@@ -150,6 +162,7 @@ nvsim/          library
   system.py  drive.py  pulses.py  sequences.py  fields.py      spin, MW, sequences, fields
   simulate.py  results.py  phase.py                            deterministic simulation
   noise.py  ensemble.py  filter_function.py  readout.py        noise, Monte Carlo, theory, PL
+  telegraph.py                                                exact telegraph-noise coherence
   plotting.py  bloch.py  noise_plots.py                        figures and animations
   study.py                                                     NoiseStudy + run_study
 studies/        configurable studies (noise_study.py)
@@ -164,6 +177,7 @@ output/         generated figures, GIFs and CSVs
 | `examples/ramsey_demo.py` | Ramsey trace and fringes |
 | `examples/spin_echo_demo.py` | echo under no / static / AC fields, φ → −φ, echo vs Ramsey, AC response vs theory |
 | `examples/dynamical_decoupling_demo.py` | XY8 under a matched AC field, filter narrowing for echo / CPMG / XY8 |
+| `examples/telegraph_noise_demo.py` | echo under telegraph noise, weak vs strong coupling: Monte Carlo vs exact vs (wrong) Gaussian theory |
 
 ### VS Code
 

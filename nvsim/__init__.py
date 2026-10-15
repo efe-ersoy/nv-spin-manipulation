@@ -7,7 +7,7 @@ from .constants import D_GS, GAMMA_C13, GAMMA_E, G, mT, uT
 from .drive import MWChannel
 from .ensemble import simulate_ensemble, sweep_ensemble
 from .fields import ACField, StaticField
-from .noise import CarbonBath, NarrowbandNoise, OUNoise, QuasiStaticNoise
+from .noise import CarbonBath, NarrowbandNoise, OUNoise, QuasiStaticNoise, TelegraphNoise
 from .pulses import Pulse, PulseSequence, Segment, Wait
 from .readout import Readout
 from .results import SimulationResult, SweepResult
@@ -37,6 +37,7 @@ __all__ = [
     "NarrowbandNoise",
     "OUNoise",
     "QuasiStaticNoise",
+    "TelegraphNoise",
     "Readout",
     "simulate_ensemble",
     "sweep_ensemble",
