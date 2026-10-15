@@ -13,6 +13,7 @@ from .readout import Readout
 from .results import SimulationResult, SweepResult
 from .sequences import cpmg, dynamical_decoupling, rabi, ramsey, spin_echo, xy4, xy8
 from .simulate import simulate, sweep
+from .tabulated import SpectrumNoise, TraceNoise
 from .system import (
     LEVELS,
     TRANSITIONS,
@@ -38,6 +39,8 @@ __all__ = [
     "OUNoise",
     "QuasiStaticNoise",
     "TelegraphNoise",
+    "SpectrumNoise",
+    "TraceNoise",
     "Readout",
     "simulate_ensemble",
     "sweep_ensemble",

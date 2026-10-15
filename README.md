@@ -66,8 +66,18 @@ All are classical fields along the NV axis (amplitudes in mT). Every source has 
 | `NarrowbandNoise(b_rms, frequency, linewidth)` | Lorentzian at ±f₀ (linewidth 0 = single line) | noise at a chosen frequency; `gaussian=False` for fixed amplitude, random phase |
 | `CarbonBath(field, b_static, b_larmor, linewidth, abundance)` | quasi-static + line at f_L = γ_C·B | ¹³C bath: T₂*, echo collapses/revivals, DD dips at τ + t_π = 1/(2f_L) |
 | `TelegraphNoise(b_low, b_high, rate_up, rate_down)`, `TelegraphNoise.symmetric(b, rate)` | Lorentzian at 0, τ_c = 1/(rate_up + rate_down); **non-Gaussian** | a field jumping between two values (bubble / wall segment hopping between pinning sites); mean = static offset |
+| `SpectrumNoise(f, psd)` (`nvsim/tabulated.py`) | any tabulated one-sided PSD [mT²/MHz] (linear between points, flat below the first, zero above the last) | Gaussian noise computed elsewhere (micromagnetics, `magtex`); FFT spectral synthesis with exact variance |
+| `TraceNoise(t, traces, gaussian=False)` (`nvsim/tabulated.py`) | estimated from the traces (Welch) | replays given B_nv(t) traces with random start offsets; traces must be longer than the sequence |
 
 The `CarbonBath` defaults (4 µT + 4 µT at 1.1 %) are phenomenological; tune them to your sample.
+
+**Noise from files (data contract, SI units).** `spectrum_noise_from_si(f_Hz, S_T2_per_Hz)` and
+`trace_noise_from_si(t_s, B_T)` convert to nvsim units (f × 1e-6, S × 1e12, t × 1e6, B × 1e3).
+`spectrum_noise_from_dataset(ds, x=, y=)` (variable `S_nv`, dims (f, y, x)) and
+`trace_noise_from_dataset(ds, x=, y=)` (variable `B_nv`, dims (t[, run], y, x)) take a field-map
+dataset of `../nv-texture-imaging/docs/DATA_CONTRACT.md` §2 at the pixel nearest to (x, y) and
+check the `units` attributes. They only need `ds[name].values / .dims / .attrs`, so an
+`xarray.Dataset` works without nvsim depending on xarray.
 
 ### How the signal is computed
 
@@ -90,8 +100,8 @@ The `CarbonBath` defaults (4 µT + 4 µT at 1.1 %) are phenomenological; tune th
   normalised PL (1 for |0⟩, 1 − contrast for |±1⟩); `photons_per_shot` + `shots`
   add photon shot noise.
 
-The Monte Carlo and theory agree within statistical error (tested in `tests/test_noise.py`
-and `tests/test_telegraph.py`).
+The Monte Carlo and theory agree within statistical error (tested in `tests/test_noise.py`,
+`tests/test_telegraph.py` and `tests/test_tabulated.py`).
 
 ## Building blocks
 
@@ -163,6 +173,7 @@ nvsim/          library
   simulate.py  results.py  phase.py                            deterministic simulation
   noise.py  ensemble.py  filter_function.py  readout.py        noise, Monte Carlo, theory, PL
   telegraph.py                                                exact telegraph-noise coherence
+  tabulated.py                                                SpectrumNoise, TraceNoise, data-contract helpers
   plotting.py  bloch.py  noise_plots.py                        figures and animations
   study.py                                                     NoiseStudy + run_study
 studies/        configurable studies (noise_study.py)
